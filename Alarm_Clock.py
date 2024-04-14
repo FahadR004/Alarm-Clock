@@ -11,6 +11,10 @@ os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"  # Removing default pygame mod
 import pygame
 
 
+class DuplicateError(Exception):
+    pass
+
+
 class AlarmError(Exception):
     pass
 
@@ -21,10 +25,9 @@ class AlarmClock(ctk.CTk):
 
         self.title("My Alarm Clock")
         self.font = ("sans-serif", 13, "bold")
+        self.resizable(0, 0)  # Disables maximise button
 
         ctk.set_appearance_mode("Dark")
-
-        ctk.set_default_color_theme("blue")
 
         self.curr_time = datetime.datetime.now().strftime("%H:%M:%S %p")
 
@@ -46,24 +49,30 @@ class AlarmClock(ctk.CTk):
 
         # Row 2
         self.hr_label = ctk.CTkLabel(self, text="ENTER HOUR: ")
-        self.hr_label.grid(row=2, column=0, padx=10, pady=10)
+        self.hr_label.grid(row=2, column=0, padx=10)
 
         self.min_label = ctk.CTkLabel(self, text="ENTER MINUTE: ")
-        self.min_label.grid(row=2, column=1, padx=10, pady=10)
+        self.min_label.grid(row=2, column=1, padx=10)
 
-        self.del_button = ctk.CTkButton(self, text="DELETE ALARM", command=self.del_alarm)
-        self.del_button.grid(row=2, column=2, columnspan=2, padx=10, pady=10)
+        self.del_button = ctk.CTkButton(self, text="DELETE ALARM", command=self.del_alarm, fg_color="#DD1111",
+                                        hover_color="#C40E0E")
+        self.del_button.grid(row=2, column=2, columnspan=2, padx=10, pady=20, rowspan=2)
 
         # Row 3
         self.hr_entry_box = ctk.CTkEntry(self, width=50)
-        self.hr_entry_box.grid(row=3, column=0, padx=10, pady=20)
+        self.hr_entry_box.grid(row=3, column=0)
         self.hr_entry_box.focus_set()
 
         self.min_entry_box = ctk.CTkEntry(self, width=50)
-        self.min_entry_box.grid(row=3, column=1, padx=10, pady=20)
+        self.min_entry_box.grid(row=3, column=1)
 
-        self.add_button = ctk.CTkButton(self, text="ADD ALARM", command=self.add_alarm)
-        self.add_button.grid(row=3, column=2, columnspan=2, padx=10, pady=10)
+        self.del_all_btn = ctk.CTkButton(self, text="DELETE ALL ALARMS", command=self.delete_all_alarms, fg_color="#DA0909"
+                                         , hover_color="#B30707")
+        self.del_all_btn.grid(row=3, column=2, columnspan=2, padx=10, pady=20, rowspan=2)
+
+        # Row 4
+        self.add_button = ctk.CTkButton(self, text="ADD ALARM", command=self.add_alarm, width=290)
+        self.add_button.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
 
         self.load_list_of_alarms()
 
@@ -119,17 +128,17 @@ class AlarmClock(ctk.CTk):
             assert hr.isnumeric() is True and min.isnumeric() is True
             assert 0 <= int(hr) <= 23 and 0 <= int(min) <= 59
             data = self.load_json_file()
+            date_obj = datetime.datetime.strptime(hr + ":" + min, "%H:%M")
+            alarm_slot = date_obj.strftime("%H:%M %p")
             for i in data:
-                if i.isnumeric() is True and data[i] == hr + ":" + min:
-                    raise AlarmError
+                if data[i] == alarm_slot:
+                    raise DuplicateError
 
         except AssertionError:
             icon = CTkMessagebox(title="ERROR", message="Invalid timeslot", icon="cancel")
-        except AlarmError:
+        except DuplicateError:
             icon = CTkMessagebox(title="ERROR", message="Alarm already exists", icon="cancel")
         else:
-            date_obj = datetime.datetime.strptime(hr + ":" + min, "%H:%M")
-            alarm_slot = date_obj.strftime("%H:%M %p")
             data["total_alarms"] += 1
             data.update({str(data["total_alarms"]): alarm_slot})
             self.write_to_json_file(data)
@@ -141,7 +150,7 @@ class AlarmClock(ctk.CTk):
         data = self.load_json_file()
         lst_of_alarms = []
         for i in data:
-            if i.isalnum() is True:
+            if i.isdigit() is True:
                 lst_of_alarms.append(data[i])
         return sorted(lst_of_alarms)
 
@@ -150,11 +159,21 @@ class AlarmClock(ctk.CTk):
         self.alarm_lst.delete(0, END)
         self.alarm_lst.insert(END, *lst)
 
+    def delete_all_alarms(self):
+        icon = CTkMessagebox(title="Confirmation", message="Do you want to delete all alarms in your list?",
+                             icon="question", option_1="No", option_2="Yes")
+        if icon.get() == "Yes":
+            self.alarm_lst.delete(0, END)
+            data = self.load_json_file()
+            updated_data = {key: value for (key, value) in data.items() if key.isdigit() is False}
+            updated_data["total_alarms"] = 1
+            self.write_to_json_file(updated_data)
+
     def sort_data_in_json(self):
         data = self.load_json_file()
         lst_of_alarms = self.get_list_of_alarms()  # Loading only the alarms (timeslots) from the json file.
         lst_of_alarms.sort()  # Sorting the list of alarms(timeslots).
-        updated_data = {key: value for (key, value) in data.items() if key.isalnum() is False}
+        updated_data = {key: value for (key, value) in data.items() if key.isdigit() is False}
         # Removing all data that has a key of number string. That data will be the timeslots associated.
         # So, in the end, only the total_alarms and Example_Alarm will remain in the json file.
         for index, value in enumerate(lst_of_alarms, 1):
@@ -167,6 +186,8 @@ class AlarmClock(ctk.CTk):
         # JSON data keeps data types intact, so we subtract without type conversion
         data = {key: value for (key,value) in data.items() if value != time_to_delete}
         self.write_to_json_file(data)
+
+
 
     @staticmethod
     def load_json_file():
